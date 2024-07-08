@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def fetch_odds(apiKey):
-    url = f"https://api.the-odds-api.com/v4/sports/upcoming/odds/?apiKey={apiKey}&regions=uk,us,eu&markets=totals&oddsFormat=decimal"
+    url = f"https://api.the-odds-api.com/v4/sports/upcoming/odds/?apiKey={apiKey}&regions=uk&markets=totals&oddsFormat=decimal"
 
     response = requests.get(url)
 
@@ -36,45 +36,33 @@ def process_odds(data):
 
     return df
 
+def calculate_arb(over, under):
+    return (1 / over) + (1 / under)
+
 def find_arbs(df):
     arbs = []
-    games = df.groupby('game')
+    games = df.groupby(['game', 'point'])
     
-    for game_id, game_data in games:
-        home_team = game_data['home'].iloc[0]
-        away_team = game_data['away'].iloc[0]
-        
-        home_data = game_data[game_data['home'] == home_team]
-        away_data = game_data[game_data['away'] == away_team]
-        
-        for team_data in [home_data, away_data]:
-            over_outcomes = team_data[team_data['type'].str.startswith('Over')]
-            under_outcomes = team_data[team_data['type'].str.startswith('Under')]
-            
-            for _, over in over_outcomes.iterrows():
-                for _, under in under_outcomes.iterrows():
-                    if over['point'] == under['point'] and over['price'] + under['price'] < 1:
-                        arb = {
-                            'game': game_id,
-                            'team': home_team if team_data is home_data else away_team,
-                            'outcome1': {
-                                'type': over['type'],
-                                'bookies': over['bookies'],
-                                'price': over['price']
-                            },
-                            'outcome2': {
-                                'type': under['type'],
-                                'bookies': under['bookies'],
-                                'price': under['price']
-                            }
-                        }
-                        arbs.append(arb)
+    for game_id, game in games:
+        overs = game[game['type'] == 'Over']
+        unders = game[game['type'] == 'Under']
+
+        for _, over in overs.iterrows():
+            for _, under in unders.iterrows():
+                arb_value = calculate_arb(over['price'], under['price'])
+                if arb_value < 1:
+                    profit_percent = (1 - arb_value) * 100
+                    arbs.append({
+                        'game': f"{game['home']} Vs {game['away']}",
+                        'point': game['point'],
+                        'over_bet': over['bookies'],
+                        'over_price': over['price'],
+                        'under_bet': under['bookies'],
+                        'under_price': under['price'],
+                        'profit': profit_percent
+                    })
     
     return arbs
-
-
-
-
 
 
 def main():
@@ -89,8 +77,9 @@ def main():
         arbs = find_arbs(df)
         for arb in arbs:
             print(arb['game'])
-            print(f"{arb['outcome1']['home']} {arb['outcome1']['type']} - {arb['outcome1']['bookies']} @ {arb['outcome1']['price']}")
-            print(f"{arb['outcome2']['away']} {arb['outcome2']['type']} - {arb['outcome2']['bookies']} @ {arb['outcome2']['price']}")
+            print(f"Over {arb['point']} on {arb['over_bet']} @ {arb['over_price']}")
+            print(f"Under {arb['point']} on {arb['under_bet']} @ {arb['under_price']}")
+
 
 
 if __name__ == "__main__":
