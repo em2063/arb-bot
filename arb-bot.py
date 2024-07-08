@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def fetch_odds(apiKey):
-    url = f"https://api.the-odds-api.com/v4/sports/upcoming/odds/?apiKey={apiKey}&regions=uk&markets=totals&oddsFormat=decimal"
+    url = f"https://api.the-odds-api.com/v4/sports/upcoming/odds/?apiKey={apiKey}&regions=uk,eu,us&markets=totals&oddsFormat=decimal"
 
     response = requests.get(url)
 
@@ -39,7 +39,7 @@ def process_odds(data):
 def calculate_arb(over, under):
     return (1 / over) + (1 / under)
 
-def find_arbs(df):
+def find_arbs(df, stake):
     arbs = []
     games = df.groupby(['game', 'point'])
     
@@ -50,16 +50,26 @@ def find_arbs(df):
         for _, over in overs.iterrows():
             for _, under in unders.iterrows():
                 arb_value = calculate_arb(over['price'], under['price'])
+
+                
+                bet_under = float(stake) * ( (1 /under['price']) / arb_value)
+                bet_over = float(stake) * ( (1 / over['price']) / arb_value)
+                
+
                 if arb_value < 1:
-                    profit_percent = (1 - arb_value) * 100
+
+                    profit_percent = ((1 / arb_value) - 1) * 100
+
                     arbs.append({
-                        'game': f"{game['home']} Vs {game['away']}",
+                        'game': f"{game['home'].iloc[0]} Vs {game['away'].iloc[0]}",
                         'point': game['point'],
                         'over_bet': over['bookies'],
                         'over_price': over['price'],
                         'under_bet': under['bookies'],
                         'under_price': under['price'],
-                        'profit': profit_percent
+                        'bet_amount_over': f"{bet_over:.2f}",
+                        'bet_amount_under': f"{bet_under:.2f}",
+                        'profit': f"{profit_percent:.2f}"
                     })
     
     return arbs
@@ -74,11 +84,19 @@ def main():
     data = fetch_odds(api_key)
     if data:
         df = process_odds(data)
-        arbs = find_arbs(df)
+
+        stake = input("> Enter your stake: ")
+
+        arbs = find_arbs(df, stake)
+        
         for arb in arbs:
-            print(arb['game'])
-            print(f"Over {arb['point']} on {arb['over_bet']} @ {arb['over_price']}")
-            print(f"Under {arb['point']} on {arb['under_bet']} @ {arb['under_price']}")
+            print(f"Game: {arb['game']}")
+            print(" ")
+            print(f"Over {arb['point'].iloc[0]} on {arb['over_bet']}. Bet {arb['bet_amount_over']} @ {arb['over_price']}")
+            print(f"Under {arb['point'].iloc[0]} on {arb['under_bet']}. Bet {arb['bet_amount_under']} @ {arb['under_price']}")
+            print(" ")
+            print(f"Profit: {arb['profit']}%")
+            print(" ")
 
 
 
