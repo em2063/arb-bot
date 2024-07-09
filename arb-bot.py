@@ -5,8 +5,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-def fetch_odds(apiKey):
-    url = f"https://api.the-odds-api.com/v4/sports/upcoming/odds/?apiKey={apiKey}&regions=uk&markets=h2h&oddsFormat=decimal"
+def fetch_odds(apiKey, market):
+    url = f"https://api.the-odds-api.com/v4/sports/upcoming/odds/?apiKey={apiKey}&regions=uk&markets={market}&oddsFormat=decimal"
 
     response = requests.get(url)
 
@@ -86,7 +86,7 @@ def find_arbs_totals(df, stake):
                         'profit': f"{profit_percent:.2f}"
                     })
 
-    arbs = sorted(arbs, key=lambda x: x['profit'], reverse=True)
+    arbs = sorted(arbs, key=lambda x: x['profit'])
     
     return arbs
 
@@ -125,7 +125,7 @@ def find_arbs_h2h(df, stake):
                             'bet_amount_home': f"{bet_home:.2f}",
                             'bet_amount_away': f"{bet_away:.2f}",
                             'bet_amount_draw': f"{bet_draw:.2f}",
-                            'profit': f"{profit_percent:.2f}"
+                            'profit': profit_percent
                         })
                 else:
 
@@ -146,8 +146,10 @@ def find_arbs_h2h(df, stake):
                             'away_price': away['price'],
                             'bet_amount_home': f"{bet_home:.2f}",
                             'bet_amount_away': f"{bet_away:.2f}",
-                            'profit': f"{profit_percent:.2f}"
+                            'profit': profit_percent
                         })
+
+    arbs = sorted(arbs, key=lambda x: float(x['profit']))
 
     return arbs
 
@@ -163,29 +165,36 @@ def retrieve_key():
 
 
 def main():
+    market = 'totals'
     api_key = retrieve_key()
 
-    data = fetch_odds(api_key)
+    data = fetch_odds(api_key, market)
     
     if data:
         df = process_odds(data)     
 
         stake = input("> Enter your stake: ")
 
-        arbs = find_arbs_h2h(df, stake)
-
-        for arb in arbs:
-            print(arb)
-            print(" ")
-
-        # for arb in arbs:
-        #     print(f"Game: {arb['game']}")
-        #     print(" ")
-        #     print(f"Over {arb['point'].iloc[0]} on {arb['over_bet']}. Bet {arb['bet_amount_over']} @ {arb['over_price']}")
-        #     print(f"Under {arb['point'].iloc[0]} on {arb['under_bet']}. Bet {arb['bet_amount_under']} @ {arb['under_price']}")
-        #     print(" ")
-        #     print(f"Profit: {arb['profit']}%")
-        #     print(" ")
+        if market == 'totals':
+            arbs = find_arbs_totals(df, stake)
+            for arb in arbs:
+                print(f"Game: {arb['game']}")
+                print(" ")
+                print(f"Over {arb['point'].iloc[0]} on {arb['over_bet']}. Bet {arb['bet_amount_over']} @ {arb['over_price']}")
+                print(f"Under {arb['point'].iloc[0]} on {arb['under_bet']}. Bet {arb['bet_amount_under']} @ {arb['under_price']}")
+                print(" ")
+                print(f"Profit: {arb['profit']}%")
+                print(" ")
+        elif market == 'h2h':
+            arbs = find_arbs_h2h(df, stake)
+            for arb in arbs:
+                total_profit = (arb['profit'] / 100) * float(stake)
+                print(f"Game: {arb['game']}")
+                print(f"Bet {arb['bet_amount_home']} on Home @ {arb['home_price']} ({arb['home_bet']})")
+                print(f"Bet {arb['bet_amount_away']} on Away @ {arb['away_price']} ({arb['away_bet']})")
+                print(f"Profit: {f"{total_profit:.2f}"} ({f"{arb['profit']:.2f}"}%)")
+                print(" ")
+                
     else:
         print("Error fetching data")
 
